@@ -275,12 +275,13 @@
     </button>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
   <script>
     const SUPABASE_URL = 'https://wtnrxsdfzircgxjnlhjo.supabase.co';
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind0bnJ4c2RmemlyY2d4am5saGpvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzczNjc1ODUsImV4cCI6MjA5Mjk0MzU4NX0.Tef-mjc-AmVU8XMeA7ZADulgziz4HESImPmjhvj3eog';
 
-    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const { createClient } = window.supabase;
+    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     let items = [];
 
