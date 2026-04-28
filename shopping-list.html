@@ -90,6 +90,11 @@
       transform: scale(0.97);
     }
 
+    .btn-add:disabled {
+      background: #a0aec0;
+      cursor: not-allowed;
+    }
+
     .stats {
       display: flex;
       gap: 16px;
@@ -225,6 +230,24 @@
       border-color: #fc8181;
       color: #fc8181;
     }
+
+    .loading {
+      text-align: center;
+      color: #a0aec0;
+      padding: 40px 0;
+      font-size: 0.95rem;
+    }
+
+    .error-msg {
+      background: #fff5f5;
+      border: 1px solid #fc8181;
+      border-radius: 8px;
+      color: #c53030;
+      padding: 10px 14px;
+      font-size: 0.85rem;
+      margin-bottom: 16px;
+      display: none;
+    }
   </style>
 </head>
 <body>
@@ -233,14 +256,16 @@
 
     <div class="input-row">
       <input id="itemInput" type="text" placeholder="아이템 입력..." maxlength="60">
-      <button class="btn-add" onclick="addItem()">추가</button>
+      <button class="btn-add" id="btnAdd" onclick="addItem()">추가</button>
     </div>
 
+    <div class="error-msg" id="errorMsg"></div>
     <div class="stats" id="stats"></div>
 
+    <div class="loading" id="loading">불러오는 중...</div>
     <ul id="list"></ul>
 
-    <div class="empty" id="empty">
+    <div class="empty" id="empty" style="display:none">
       <span class="empty-icon">🛍️</span>
       아직 아이템이 없어요.<br>위에서 추가해 보세요!
     </div>
@@ -250,11 +275,20 @@
     </button>
   </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>
-    let items = JSON.parse(localStorage.getItem('shoppingList') || '[]');
+    const SUPABASE_URL = 'https://wtnrxsdfzircgxjnlhjo.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind0bnJ4c2RmemlyY2d4am5saGpvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzczNjc1ODUsImV4cCI6MjA5Mjk0MzU4NX0.Tef-mjc-AmVU8XMeA7ZADulgziz4HESImPmjhvj3eog';
 
-    function save() {
-      localStorage.setItem('shoppingList', JSON.stringify(items));
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    let items = [];
+
+    function showError(msg) {
+      const el = document.getElementById('errorMsg');
+      el.textContent = msg;
+      el.style.display = 'block';
+      setTimeout(() => { el.style.display = 'none'; }, 4000);
     }
 
     function render() {
@@ -262,7 +296,9 @@
       const empty = document.getElementById('empty');
       const stats = document.getElementById('stats');
       const btnClear = document.getElementById('btnClear');
+      const loading = document.getElementById('loading');
 
+      loading.style.display = 'none';
       list.innerHTML = '';
 
       if (items.length === 0) {
@@ -284,49 +320,114 @@
 
       btnClear.style.display = done > 0 ? 'block' : 'none';
 
-      items.forEach((item, idx) => {
+      items.forEach(item => {
         const li = document.createElement('li');
         if (item.checked) li.classList.add('checked');
 
         li.innerHTML = `
-          <div class="checkbox" onclick="toggle(${idx})"></div>
-          <span class="item-text" onclick="toggle(${idx})">${escapeHtml(item.text)}</span>
-          <button class="btn-delete" onclick="deleteItem(${idx})" title="삭제">✕</button>
+          <div class="checkbox" onclick="toggle('${item.id}')"></div>
+          <span class="item-text" onclick="toggle('${item.id}')">${escapeHtml(item.text)}</span>
+          <button class="btn-delete" onclick="deleteItem('${item.id}')" title="삭제">✕</button>
         `;
 
         list.appendChild(li);
       });
     }
 
-    function addItem() {
+    async function loadItems() {
+      const { data, error } = await supabase
+        .from('shopping_items')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        showError('데이터를 불러오지 못했습니다: ' + error.message);
+        document.getElementById('loading').style.display = 'none';
+        return;
+      }
+
+      items = data;
+      render();
+    }
+
+    async function addItem() {
       const input = document.getElementById('itemInput');
       const text = input.value.trim();
       if (!text) {
         input.focus();
         return;
       }
-      items.unshift({ text, checked: false });
+
+      const btnAdd = document.getElementById('btnAdd');
+      btnAdd.disabled = true;
+
+      const { data, error } = await supabase
+        .from('shopping_items')
+        .insert([{ text, checked: false }])
+        .select()
+        .single();
+
+      btnAdd.disabled = false;
+
+      if (error) {
+        showError('추가에 실패했습니다: ' + error.message);
+        return;
+      }
+
+      items.unshift(data);
       input.value = '';
       input.focus();
-      save();
       render();
     }
 
-    function toggle(idx) {
-      items[idx].checked = !items[idx].checked;
-      save();
+    async function toggle(id) {
+      const item = items.find(i => i.id === id);
+      if (!item) return;
+
+      const { error } = await supabase
+        .from('shopping_items')
+        .update({ checked: !item.checked })
+        .eq('id', id);
+
+      if (error) {
+        showError('업데이트에 실패했습니다: ' + error.message);
+        return;
+      }
+
+      item.checked = !item.checked;
       render();
     }
 
-    function deleteItem(idx) {
-      items.splice(idx, 1);
-      save();
+    async function deleteItem(id) {
+      const { error } = await supabase
+        .from('shopping_items')
+        .delete()
+        .eq('id', id);
+
+      if (error) {
+        showError('삭제에 실패했습니다: ' + error.message);
+        return;
+      }
+
+      items = items.filter(i => i.id !== id);
       render();
     }
 
-    function clearChecked() {
+    async function clearChecked() {
+      const checkedIds = items.filter(i => i.checked).map(i => i.id);
+      if (checkedIds.length === 0) return;
+
+      const { error } = await supabase
+        .from('shopping_items')
+        .delete()
+        .in('id', checkedIds);
+
+      if (error) {
+        showError('삭제에 실패했습니다: ' + error.message);
+        return;
+      }
+
       items = items.filter(i => !i.checked);
-      save();
       render();
     }
 
@@ -342,7 +443,7 @@
       if (e.key === 'Enter') addItem();
     });
 
-    render();
+    loadItems();
   </script>
 </body>
 </html>
